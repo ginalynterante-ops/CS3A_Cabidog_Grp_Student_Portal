@@ -1,0 +1,1632 @@
+﻿const loginForm = document.getElementById('loginForm');
+const errorMessage = document.getElementById('error-message');
+
+
+// Removed: const EVENTS_COLLECTION = 'events'; (Now in HTML)
+// Removed: const SUPPORT_COLLECTION = 'support_tickets'; (Now in HTML)
+
+
+
+
+function toUpper(value) {
+    if (typeof value === 'string' && value.trim() !== '') {
+        return value.trim().toUpperCase();
+    }
+   
+    return 'N/A';
+}
+
+
+// --- NEW FUNCTION: LOAD EVENTS ---
+async function loadEvents() {
+    const eventsTableBody = document.getElementById('events-table-body');
+    if (!eventsTableBody) return; // Exit if not on the dashboard page
+   
+    eventsTableBody.innerHTML = '<tr><td colspan="4">Loading events...</td></tr>';
+
+
+    try {
+        // Fetch events, ordering by date and limiting to a relevant amount (e.g., 10)
+        const snapshot = await dbRef.collection(EVENTS_COLLECTION)
+            .orderBy('eventDate', 'desc') // Assuming you have an 'eventDate' field
+            .limit(10)
+            .get();
+
+
+        if (snapshot.empty) {
+            eventsTableBody.innerHTML = '<tr><td colspan="4">No upcoming events found.</td></tr>';
+            return;
+        }
+
+
+        let html = '';
+        snapshot.forEach(doc => {
+            const event = doc.data();
+            const date = event.eventDate ? new Date(event.eventDate.seconds * 1000).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            }) : 'N/A';
+            const time = event.eventTime || 'TBA';
+            const venue = event.venue || 'TBA';
+            const statusClass = event.status === 'Cancelled' ? 'status-cancelled' : 'status-active';
+
+
+            html += `
+                <tr>
+                    <td>${date}</td>
+                    <td>${event.title || 'No Title'}</td>
+                    <td>${venue} / ${time}</td>
+                    <td><span class="event-status ${statusClass}">${event.status || 'Active'}</span></td>
+                </tr>
+            `;
+        });
+       
+        eventsTableBody.innerHTML = html;
+
+
+    } catch (error) {
+        console.error("Error loading events:", error);
+        eventsTableBody.innerHTML = '<tr><td colspan="4" class="error-message">Error loading events. Please check the console.</td></tr>';
+    }
+}
+// ----------------------------------
+
+
+
+
+if (loginForm && typeof dbRef !== 'undefined') {
+    loginForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+
+        const studentNumberInput = document.getElementById('studentNumber').value.trim();
+        const passwordInput = document.getElementById('password').value.trim();
+        const dataPolicyCheckbox = document.getElementById('dataPolicy');
+
+
+        errorMessage.textContent = '';
+        errorMessage.style.display = 'none';
+
+
+        if (!dataPolicyCheckbox.checked) {
+            errorMessage.textContent = 'You must agree to the Data Privacy Policy.';
+            errorMessage.style.display = 'block';
+            return;
+        }
+
+
+        try {
+           
+            const docRef = dbRef.collection(USERS_COLLECTION).doc(studentNumberInput);
+            const docSnapshot = await docRef.get();
+
+
+            if (!docSnapshot.exists) {
+                errorMessage.textContent = 'Invalid student number or password.';
+                errorMessage.style.display = 'block';
+                return;
+            }
+
+
+            const userData = docSnapshot.data();
+
+
+            const dbPassword = userData.passw ? userData.passw.trim() : '';
+            const dbStudentNumber = userData.studnumber ? userData.studnumber.toString().trim() : '';
+
+
+            if (dbPassword === passwordInput && dbStudentNumber === studentNumberInput) {
+
+
+                const firstName = userData.fname || '';
+                const middleName = userData.mname || '';
+                const lastName = userData.lname || '';
+                const studentFullName = `${firstName} ${lastName}`;
+
+
+                const loggedInUser = {
+                    studentNumber: userData.studnumber,
+                    fullName: studentFullName,
+                    isEnrolled: userData.isEnrolled || false,
+                    courseProgram: userData.courseProgram || userData.course || userData.program || 'N/A',
+                };
+
+
+             
+                localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
+
+
+                alert(`Welcome, ${loggedInUser.fullName}! Redirecting to Portal...`);
+                window.location.href = 'index.html';
+
+
+            } else {
+                errorMessage.textContent = 'Invalid student number or password.';
+                errorMessage.style.display = 'block';
+            }
+        } catch (error) {
+            console.error("Firestore Login Error:", error);
+            errorMessage.textContent = 'A database error occurred. Please try again.';
+            errorMessage.style.display = 'block';
+        }
+
+
+        const verifiedStudentNumber = studentNumberInput;
+
+
+
+
+localStorage.setItem('activeStudentNumber', verifiedStudentNumber);
+    });
+}
+
+
+
+
+function togglePasswordVisibility(targetId, toggleElement) {
+    const passwordInput = document.getElementById(targetId);
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        toggleElement.classList.remove('fa-eye');
+        toggleElement.classList.add('fa-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        toggleElement.classList.remove('fa-eye-slash');
+        toggleElement.classList.add('fa-eye');
+    }
+}
+
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+ 
+    const loginPasswordToggle = document.querySelector('.toggle-password-login');
+    if (loginPasswordToggle) {
+        loginPasswordToggle.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            togglePasswordVisibility(targetId, this);
+        });
+    }
+
+
+
+
+    document.querySelectorAll('.toggle-password').forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            togglePasswordVisibility(targetId, this);
+        });
+    });
+
+
+
+
+
+
+});
+
+
+// --- FIX 1: Modified displayMessage to handle hiding ---
+function displayMessage(type, message) {
+    const messageBox = document.getElementById('messageBox');
+    if (messageBox) {
+        if (type === 'hide') {
+            messageBox.style.display = 'none';
+            messageBox.textContent = '';
+            messageBox.className = 'message-box';
+            return;
+        }
+        messageBox.className = 'message-box ' + type;
+        messageBox.textContent = message;
+        messageBox.style.display = 'block';
+    }
+}
+// -----------------------------------------------------
+
+
+// Settings dropdown toggle logic
+        document.getElementById('settingsIcon')?.addEventListener('click', () => {
+            document.getElementById('settingsDropdown')?.classList.toggle('show');
+        });
+        window.addEventListener('click', (e) => {
+            if (!e.target.matches('#settingsIcon')) {
+                const dropdown = document.getElementById('settingsDropdown');
+                if (dropdown && dropdown.classList.contains('show')) {
+                    dropdown.classList.remove('show');
+                }
+            }
+        });
+
+
+// STUDENT PROFILE INFORMATION FUNCTION
+function loadUserProfile() {
+    const userProfileData = localStorage.getItem('currentUser');
+
+
+    const studentNumberElement = document.getElementById('student-number-display');
+    const studentNameElement = document.getElementById('student-name-display');
+    const logoutLink = document.querySelector('.logout-link');
+
+
+    if (userProfileData) {
+        const user = JSON.parse(userProfileData);
+
+
+        if (studentNumberElement) {
+            studentNumberElement.textContent = user.studentNumber;
+        }
+        if (studentNameElement) {
+            studentNameElement.textContent = user.fullName.toUpperCase();
+        }
+    } else if (!window.location.pathname.includes('login.html')) {
+     
+        window.location.href = 'login.html';
+        return;
+    }
+
+
+    if (logoutLink) {
+        logoutLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        });
+    }
+}
+
+
+function setActiveLink() {
+    let currentPath = window.location.pathname.split('/').pop() || 'index.html';
+
+
+    if (currentPath === 'dashboard.html' || currentPath === '') {
+        currentPath = 'index.html';
+    } else if (currentPath === 'grades.html') {
+        currentPath = 'sgrades.html';
+    } else if (currentPath === 'profile.html') {
+        currentPath = 'student_profile.html';
+    } else if (currentPath === 'change_password.html') {
+       
+    }
+
+
+    const allLinks = document.querySelectorAll('.side-nav ul li a');
+    allLinks.forEach(link => link.classList.remove('active'));
+
+
+    allLinks.forEach(link => {
+        if (link.getAttribute('href') === currentPath) {
+            link.classList.add('active');
+        }
+    });
+}
+
+
+function updateEnrollmentLink() {
+    const userProfileData = localStorage.getItem('currentUser');
+    const enrollmentLink = document.getElementById('enrollment-link');
+    const enrollmentText = document.getElementById('enrollment-text');
+
+
+    if (userProfileData && enrollmentLink && enrollmentText) {
+        const user = JSON.parse(userProfileData);
+
+
+        if (user.isEnrolled === true) {
+            enrollmentText.textContent = 'Registration Form';
+            enrollmentLink.href = 'enroll.html';
+        } else {
+            enrollmentText.textContent = 'Student Enrollment';
+            enrollmentLink.href = 'enroll.html';
+        }
+    }
+}
+
+
+
+
+
+
+function loadStudentDetails() {
+    const userProfileData = localStorage.getItem('loggedInUser');
+    const studentNumberInput = document.getElementById('studentNumber');
+    const nameInput = document.getElementById('fullName');
+    const courseProgramInput = document.getElementById('courseProgram');
+   
+    const supportForm = document.getElementById('supportForm');
+    const submitTicketBtn = document.getElementById('submitTicketBtn');
+   
+    if (!studentNumberInput || !nameInput || !courseProgramInput) return;
+
+
+    if (userProfileData) {
+        const user = JSON.parse(userProfileData);
+
+
+     
+        studentNumberInput.value = user.studentNumber || '';
+        nameInput.value = user.fullName || '';
+ 
+        courseProgramInput.value = user.courseProgram || 'N/A';
+       
+    } else {
+        displayMessage('error', '❌ User session not found. Please log in again.');
+        if (supportForm) supportForm.style.display = 'none';
+        if (submitTicketBtn) submitTicketBtn.style.display = 'none';
+    }
+}
+
+
+
+
+async function loadStudentProfileDetails() {
+    const userProfileData = localStorage.getItem('currentUser');
+
+
+    if (!userProfileData || typeof dbRef === 'undefined' || !window.location.pathname.includes('student_profile.html')) {
+        return;
+    }
+
+
+    const user = JSON.parse(userProfileData);
+    const studentNumber = user.studentNumber;
+
+
+    try {
+        const docRef = dbRef.collection(USERS_COLLECTION).doc(studentNumber);
+        const docSnapshot = await docRef.get();
+
+
+        if (docSnapshot.exists) {
+            const profileData = docSnapshot.data();
+
+
+            const firstName = profileData.fname || '';
+            const middleName = profileData.mname || '';
+            const lastName = profileData.lname || '';
+
+
+            const formattedFullName = `${toUpper(firstName)} ${middleName ? toUpper(middleName[0]) + '. ' : ''}${toUpper(lastName)}`;
+
+
+            let formattedDOB = 'N/A';
+            if (profileData.bdate && profileData.bdate.toDate) {
+                const dateObject = profileData.bdate.toDate();
+                const year = dateObject.getFullYear();
+                const month = String(dateObject.getMonth() + 1).padStart(2, '0');
+                const day = String(dateObject.getDate()).padStart(2, '0');
+                formattedDOB = `${year}-${month}-${day}`;
+            }
+
+
+            // NOTE: The student data uses 'street', 'cvstatus', and 'course'.
+            // The form/display uses 'streetName', 'civil-status', and 'course'.
+            // We ensure we map the values correctly here.
+            const studentStatus = profileData.isEnrolled === true ? 'REGULAR' : 'IRREGULAR';
+
+
+
+
+            const elIds = {
+                'profile-student-number-summary': profileData.studnumber,
+                'profile-full-name-card': formattedFullName.trim(),
+                'profile-course': toUpper(profileData.course),
+                'profile-status': toUpper(studentStatus),
+                'profile-street': toUpper(profileData.street), // Use 'street' from Firestore
+                'profile-barangay': toUpper(profileData.barangay),
+                'profile-municipality': toUpper(profileData.municipality),
+                'profile-province': toUpper(profileData.province),
+                'profile-dob': formattedDOB,
+                'profile-sex': toUpper(profileData.sex),
+                'profile-civil-status': toUpper(profileData.cvstatus), // Use 'cvstatus' from Firestore
+                'profile-citizenship': toUpper(profileData.citizenship),
+                'profile-student-contact': profileData.studentContact || 'N/A',
+                'profile-religion': toUpper(profileData.religion),
+                'profile-guardian-name': toUpper(profileData.guardianName),
+                'profile-guardian-contact': profileData.guardianContact || 'N/A',
+                'profile-email': profileData.email || 'N/A'
+            };
+
+
+            for (const [id, value] of Object.entries(elIds)) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value || '';
+            }
+
+
+        } else {
+            console.error("Profile data not found for student:", studentNumber);
+        }
+    } catch (error) {
+        console.error("Error loading profile details:", error);
+    }
+}
+
+
+
+
+
+
+async function changePassword(currentPassword, newPassword, confirmPassword) {
+    const messageElement = document.getElementById('password-message');
+   
+    messageElement.textContent = '';
+
+
+    if (newPassword !== confirmPassword) {
+        messageElement.textContent = 'New passwords do not match.';
+        messageElement.style.color = 'red';
+        return;
+    }
+
+
+
+
+    if (newPassword.length !== 4) {
+        messageElement.textContent = 'Password must be exactly 4 characters long.';
+        messageElement.style.color = 'red';
+        return;
+    }
+    // ---------------------------------------------
+   
+    const userProfileData = localStorage.getItem('currentUser');
+    if (!userProfileData) {
+        messageElement.textContent = 'User session not found. Please log in again.';
+        messageElement.style.color = 'red';
+        return;
+    }
+   
+    const user = JSON.parse(userProfileData);
+    const studentNumber = user.studentNumber;
+
+
+    if (!studentNumber) {
+        messageElement.textContent = 'Student ID not available.';
+        messageElement.style.color = 'red';
+        return;
+    }
+
+
+    try {
+        const docRef = dbRef.collection(USERS_COLLECTION).doc(studentNumber);
+        const docSnapshot = await docRef.get();
+
+
+        if (!docSnapshot.exists) {
+            messageElement.textContent = 'Student profile not found.';
+            messageElement.style.color = 'red';
+            return;
+        }
+
+
+        const userData = docSnapshot.data();
+        const dbPassword = userData.passw ? userData.passw.trim() : '';
+
+
+        if (dbPassword !== currentPassword) {
+            messageElement.textContent = 'Incorrect current password.';
+            messageElement.style.color = 'red';
+            return;
+        }
+
+
+
+
+        await docRef.update({ passw: newPassword });
+   
+
+
+        messageElement.style.color = 'green';
+        messageElement.textContent = 'Password updated successfully! Please remember your new password.';
+        document.getElementById('changePasswordForm')?.reset();
+    } catch (error) {
+        console.error("Error changing password:", error);
+        messageElement.style.color = 'red';
+        messageElement.textContent = 'An error occurred during password update. Try again.';
+    }
+}
+
+
+
+
+
+
+function loadStudentProfile() {
+    const studentNumberInput = document.getElementById('studentNumber');
+    const fullNameInput = document.getElementById('fullName');
+    const courseProgramInput = document.getElementById('courseProgram');
+   
+    const userJson = localStorage.getItem('currentUser');
+   
+    if (!userJson) {
+   
+        console.error("User not logged in. 'currentUser' not found in localStorage.");
+        if (studentNumberInput) studentNumberInput.value = "N/A";
+        if (fullNameInput) fullNameInput.value = "N/A";
+        if (courseProgramInput) courseProgramInput.value = "N/A";
+        return;
+    }
+
+
+    try {
+       
+        const studentData = JSON.parse(userJson);
+       
+       
+        if (studentNumberInput) {
+            studentNumberInput.value = toUpper(studentData.studentNumber);
+        }
+        if (fullNameInput) {          
+            fullNameInput.value = toUpper(studentData.fullName);
+        }
+        if (courseProgramInput) {        
+            courseProgramInput.value = toUpper(studentData.courseProgram);
+        }
+
+
+    } catch (error) {
+        console.error("Error loading or parsing 'currentUser' data from localStorage:", error);
+     
+        if (studentNumberInput) studentNumberInput.value = "Error";
+        if (fullNameInput) fullNameInput.value = "Error";
+        if (courseProgramInput) courseProgramInput.value = "Error";
+    }
+}
+
+
+
+
+
+
+async function loadSchedulePageDefaults(studentId) {
+    const summaryRow = document.getElementById('scheduleStudentSummaryRow');
+    if (!dbRef || !studentId || !summaryRow) return;
+
+
+    summaryRow.innerHTML = '<tr><td colspan="7">Loading student summary...</td></tr>';
+
+
+    try {
+        const docSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studentId).get();
+
+
+        if (docSnapshot.exists) {
+            const profileData = docSnapshot.data();
+
+
+            const fullName = `${profileData.fname || ''} ${profileData.mname || ''} ${profileData.lname || ''}`;
+
+
+            summaryRow.innerHTML = `
+                <tr>
+                    <td>${profileData.studnumber || 'N/A'}</td>
+                    <td>${fullName.trim().toUpperCase()}</td>
+                    <td>${toUpper(profileData.current_sy)}</td>
+                    <td>${toUpper(profileData.semster)}</td>
+                    <td>${toUpper(profileData.course)}</td>
+                    <td>${profileData.yearLevel || 'N/A'}</td>
+                    <td>${toUpper(profileData.section)}</td>
+                </tr>
+            `;
+        } else {
+            summaryRow.innerHTML = '<tr><td colspan="7">Student summary data not found.</td></tr>';
+        }
+    } catch (error) {
+        console.error("Error loading student schedule summary:", error);
+        summaryRow.innerHTML = '<tr><td colspan="7">Failed to load student summary data.</td></tr>';
+    }
+}
+
+
+// FIX APPLIED HERE: Corrected subject.code to subject.subjectCode and subject.title to subject.subjectTitle
+async function loadStudentSchedule(studentId) {
+    const scheduleBody = document.getElementById('schedule-data-body');
+    if (!dbRef || !studentId || !scheduleBody) return;
+
+
+    scheduleBody.innerHTML = '<tr><td colspan="6">Fetching your class schedule...</td></tr>';
+
+
+    try {
+        const scheduleRef = dbRef.collection(USERS_COLLECTION).doc(studentId);
+        const docSnap = await scheduleRef.get();
+
+
+        if (docSnap.exists && docSnap.data().schedule) {
+            const schedule = docSnap.data().schedule;
+
+
+            if (schedule.length === 0) {
+                scheduleBody.innerHTML = '<tr><td colspan="6">You are not currently enrolled in any subjects.</td></tr>';
+                return;
+            }
+
+
+            let html = schedule.map(subject => `
+                <tr>
+                    <td>${subject.subjectCode || 'N/A'}</td>
+                    <td>${subject.subjectTitle || 'N/A'}</td>
+                    <td>${subject.day || 'N/A'}</td>
+                    <td>${subject.time || 'N/A'}</td>
+                    <td>${subject.room || 'N/A'}</td>
+                    <td>${subject.instructor || 'N/A'}</td>
+                </tr>
+            `).join('');
+
+
+            scheduleBody.innerHTML = html;
+
+
+        } else {
+            scheduleBody.innerHTML = '<tr><td colspan="6">No class schedule found for this student.</td></tr>';
+        }
+
+
+    } catch (error) {
+        console.error("Error loading student schedule:", error);
+        scheduleBody.innerHTML = '<tr><td colspan="6">An error occurred while loading your schedule.</td></tr>';
+    }
+}
+
+
+async function scrapeAndUploadSchedule() {
+    const tableBody = document.getElementById('schedule-data-body');
+    const uploadButton = document.getElementById('uploadScheduleButton');
+    const userProfileData = localStorage.getItem('currentUser');
+
+
+    if (!tableBody || typeof dbRef === 'undefined' || !userProfileData) {
+        console.error("Missing table body, Firebase DB, or user session.");
+        alert("Upload failed: User session or database connection error.");
+        return;
+    }
+   
+    uploadButton.disabled = true;
+
+
+    const user = JSON.parse(userProfileData);
+    const studnumber = user.studentNumber?.toString().trim();
+    if (!studnumber) {
+        alert("Upload failed: Student number not found in session.");
+        uploadButton.disabled = false;
+        return;
+    }
+
+
+    let currentSY = 'N/A';
+    let currentSem = 'N/A';
+    try {
+        const docSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studnumber).get();
+        if (docSnapshot.exists) {
+            const profileData = docSnapshot.data();
+            currentSY = profileData.schoolYear || currentSY;
+            currentSem = profileData.semester || currentSem;
+        }
+    } catch (error) {
+        console.warn("Could not fetch current SY/Semester context:", error);
+    }
+   
+    const rows = tableBody.querySelectorAll('tr');
+    const scheduleData = [];
+   
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 6) {
+            const subjectCode = cells[0].textContent.trim();
+           
+            if (!subjectCode || subjectCode === 'N/A' || subjectCode.toLowerCase().includes('fetching')) return;
+
+
+            scheduleData.push({
+                subjectCode: subjectCode,
+                subjectTitle: cells[1].textContent.trim(),
+                day: cells[2].textContent.trim(),
+                time: cells[3].textContent.trim(),
+                room: cells[4].textContent.trim(),
+                instructor: cells[5].textContent.trim(),
+                schoolYear: currentSY,
+                semester: currentSem,
+                uploadedAt: new Date().toISOString()
+            });
+        }
+    });
+
+
+    if (scheduleData.length === 0) {
+        alert("No schedule data found in the table to upload.");
+        uploadButton.disabled = false;
+        return;
+    }
+
+
+    try {
+        const studentDocRef = dbRef.collection(USERS_COLLECTION).doc(studnumber);
+       
+        await studentDocRef.update({
+            schedule: scheduleData
+        });
+       
+        console.log(`Successfully uploaded ${scheduleData.length} schedule items for student ${studnumber}.`);
+        if (uploadButton) {
+            uploadButton.textContent = 'Upload Successful! (Data Saved)';
+        }
+        alert(`Schedule data uploaded successfully! Uploaded ${scheduleData.length} subjects.`);
+
+
+    } catch (error) {
+        if (error.code === 'not-found') {
+             console.warn(`Student document ${studnumber} not found. Using .set() instead of .update().`);
+             const studentDocRef = dbRef.collection(USERS_COLLECTION).doc(studnumber);
+             await studentDocRef.set({ schedule: scheduleData, isEnrolled: true }, { merge: true });
+
+
+             console.log(`Successfully created/updated document and uploaded ${scheduleData.length} schedule items.`);
+             if (uploadButton) {
+                uploadButton.textContent = 'Upload Successful! (Data Saved)';
+             }
+             alert(`Schedule data uploaded successfully! Uploaded ${scheduleData.length} subjects.`);
+        } else {
+            console.error("Error writing schedule data:", error);
+            alert("An error occurred while uploading schedule data. Check console for details.");
+            uploadButton.disabled = false;
+        }
+    } finally {
+        if(uploadButton.textContent !== 'Upload Successful! (Data Saved)'){
+            uploadButton.disabled = false;
+        }
+    }
+}
+
+
+
+
+//CALENDAR FUNCTION
+const calendarGrid = document.querySelector('.calendar-grid');
+const monthYearDisplay = document.querySelector('.month-year');
+let currentDate = new Date();
+
+
+function highlightSpecificDay(dateToHighlight) {
+    if (!calendarGrid) return;
+
+
+    const existingHighlights = document.querySelectorAll('.day.current-highlight');
+    existingHighlights.forEach(cell => cell.classList.remove('current-highlight'));
+
+
+    const currentlyViewedMonth = currentDate.getMonth();
+    const currentlyViewedYear = currentDate.getFullYear();
+
+
+    if (dateToHighlight.getMonth() === currentlyViewedMonth && dateToHighlight.getFullYear() === currentlyViewedYear) {
+        const dayNumber = dateToHighlight.getDate().toString();
+        const targetCell = Array.from(calendarGrid.querySelectorAll('.day:not(.past):not(.next)')).find(
+            cell => cell.textContent === dayNumber
+        );
+        if (targetCell) {
+            targetCell.classList.add('current-highlight');
+        }
+    }
+}
+//CALENDAR FUNCTION
+function renderCalendar(date, events = []) {
+    if (!calendarGrid || !monthYearDisplay) return;
+
+
+    const oldDayCells = calendarGrid.querySelectorAll('.day');
+    oldDayCells.forEach(cell => cell.remove());
+
+
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const today = new Date();
+
+
+    monthYearDisplay.textContent = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    const firstDayIndex = firstDayOfMonth.getDay();
+
+
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = firstDayIndex; i > 0; i--) {
+        const day = document.createElement('div');
+        day.classList.add('day', 'past');
+        day.textContent = prevMonthLastDay - i + 1;
+        calendarGrid.appendChild(day);
+    }
+
+
+    for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
+        const day = document.createElement('div');
+        day.classList.add('day');
+        day.textContent = i;
+
+
+        if (i === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+            day.classList.add('today');
+        }
+        calendarGrid.appendChild(day);
+    }
+
+
+    const totalCells = firstDayIndex + lastDayOfMonth.getDate();
+    const remainingCells = Math.max(0, 42 - totalCells);
+
+
+    for (let i = 1; i <= remainingCells; i++) {
+        const day = document.createElement('div');
+        day.classList.add('day', 'next');
+        day.textContent = i;
+        calendarGrid.appendChild(day);
+    }
+
+
+    highlightSpecificDay(new Date());
+}
+
+
+function changeMonth(delta) {
+    currentDate.setMonth(currentDate.getMonth() + delta);
+    renderCalendar(currentDate);
+    highlightSpecificDay(new Date());
+}
+
+
+function initializeCalendarAndHighlight() {
+    setInterval(() => {
+        const today = new Date();
+        const hour = today.getHours();
+        const minute = today.getMinutes();
+        const second = today.getSeconds();
+
+
+        if (hour === 0 && minute === 0 && second < 60) {
+             if (currentDate.getMonth() === today.getMonth() && currentDate.getFullYear() === today.getFullYear()) {
+                 renderCalendar(currentDate);
+             }
+             highlightSpecificDay(today);
+        } else {
+             highlightSpecificDay(today);
+        }
+    }, 60000);
+}
+// EVENT FUNCTION
+// HELPER FUNCTION: Extracts the end date from the Date string (e.g., "December 1-5, 2025")
+// It assumes the current year for dates that don't include it, or uses the year provided.
+function getEndDate(dateString) {
+    if (!dateString) return null;
+
+
+    // Use a regex to find a date range (e.g., "1-5") or a single date (e.g., "5")
+    const rangeMatch = dateString.match(/(\w+)\s(\d+)\s*-\s*(\d+),\s*(\d{4})/);
+    const singleMatch = dateString.match(/(\w+)\s(\d+),\s*(\d{4})/);
+   
+    let endDay;
+    let month;
+    let year;
+
+
+    if (rangeMatch) {
+        // Handle "Month Day1-Day2, Year" format (e.g., "December 1-5, 2025")
+        month = rangeMatch[1];
+        endDay = rangeMatch[3]; // This is the end day (5)
+        year = rangeMatch[4];
+    } else if (singleMatch) {
+        // Handle "Month Day, Year" format (e.g., "December 5, 2025")
+        month = singleMatch[1];
+        endDay = singleMatch[2]; // This is the single day (5)
+        year = singleMatch[3];
+    } else {
+        // Fallback or handle other date formats if necessary (e.g., assume the whole string is parsable)
+        try {
+            return new Date(dateString);
+        } catch (e) {
+            return null;
+        }
+    }
+
+
+    // Create a new Date object for the end date
+    const dateStringForEndDate = `${month} ${endDay}, ${year}`;
+    const endDate = new Date(dateStringForEndDate);
+   
+    // Set time to end of day (23:59:59) so events are still shown throughout the end date
+    endDate.setHours(23, 59, 59, 999);
+   
+    return endDate;
+}
+
+
+// EVENT FUNCTION
+function renderEventsTable(events) {
+    const tableBody = document.getElementById('eventTableBody');
+    if (!tableBody) return;
+
+
+    tableBody.innerHTML = '';
+
+
+    if (events.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4">No upcoming events found.</td></tr>';
+        return;
+    }
+
+
+    events.forEach(event => {
+        const row = tableBody.insertRow();
+        row.innerHTML = `
+            <td>${event.id}</td>
+            <td>${event.Date || 'N/A'}</td>
+            <td>${event.EventName || 'N/A'}</td>
+            <td>${event.Details || 'N/A'}</td>
+        `;
+    });
+}
+
+
+function fetchAndRenderEvents() {
+    // Check if dbRef and EVENTS_COLLECTION are globally available from the HTML script block
+    if (typeof dbRef === 'undefined' || typeof EVENTS_COLLECTION === 'undefined') return;
+
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+
+    dbRef.collection(EVENTS_COLLECTION).onSnapshot(snapshot => {
+        const allEvents = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+           
+            const dateObject = data.Date?.toDate ? data.Date.toDate() : null;
+            const dateStr = dateObject ? dateObject.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            }) : data.Date || 'N/A';
+
+
+            allEvents.push({
+                ...data,
+                Date: dateStr,
+                id: doc.id
+            });
+        });
+
+
+        const upcomingEvents = allEvents.filter(event => {
+            const endDate = getEndDate(event.Date);
+           
+            if (!endDate) {
+                console.warn(`Could not parse end date for event ID ${event.id}. Keeping it visible.`);
+                return true;
+            }
+           
+            return endDate.getTime() >= today.getTime();
+        });
+       
+        renderEventsTable(upcomingEvents);
+
+
+    }, error => {
+        console.error("Error fetching events:", error);
+        const tableBody = document.getElementById('eventTableBody');
+        if (tableBody) {
+             tableBody.innerHTML = '<tr><td colspan="4">Failed to load events. Check Firebase connection/rules.</td></tr>';
+        }
+    });
+}
+
+
+async function loadGradePageDefaults() {
+    const userProfileData = localStorage.getItem('currentUser');
+    if (!userProfileData || typeof dbRef === 'undefined') return;
+   
+    const user = JSON.parse(userProfileData);
+    const studnumber = user.studentNumber?.toString().trim();
+    if (!studnumber) {
+        document.getElementById('studentSummaryRow').innerHTML = '<tr><td colspan="7">Error: Student ID not found to load data.</td></tr>';
+        return;
+    }
+
+
+    const yearFilter = document.getElementById('schoolYearFilter');
+    if (yearFilter) {
+        const entryYear = parseInt(studnumber.substring(0, 4));
+        const currentCalendarYear = new Date().getFullYear();
+        yearFilter.innerHTML = '<option value="">Select School Year</option>';
+
+
+        for (let year = entryYear; ; year++) {
+            const syStart = year;
+            const syEnd = year + 1;
+            const syString = `${syStart}-${syEnd}`;
+            if (syStart > currentCalendarYear) break;
+            const option = document.createElement('option');
+            option.value = syString;
+            option.textContent = syString;
+            yearFilter.appendChild(option);
+        }
+    }
+
+
+    try {
+        const docSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studnumber).get();
+        if (!docSnapshot.exists) {
+            document.getElementById('studentSummaryRow').innerHTML = '<tr><td colspan="7">Student profile document not found in Firestore.</td></tr>';
+            return;
+        }
+
+
+        const profileData = docSnapshot.data();
+        const summaryRow = document.getElementById('studentSummaryRow');
+
+
+        if (summaryRow) {
+            summaryRow.innerHTML = '';
+            const fullName = `${profileData.fname || ''} ${profileData.mname || ''} ${profileData.lname || ''}`;
+            const currentSY = profileData.schoolYear || `${new Date().getFullYear() - 1}-${new Date().getFullYear()}`;
+            const currentSem = profileData.semester || 'N/A';
+           
+            summaryRow.innerHTML = `
+                <tr>
+                    <td>${studnumber}</td>
+                    <td>${fullName.trim().toUpperCase()}</td>
+                    <td>${currentSY}</td>
+                    <td>${profileData.semester.toUpperCase()}</td>
+                    <td>${profileData.course || 'N/A'}</td>
+                    <td>${profileData.yearLevel || 'N/A'}</td>
+                    <td>${profileData.section || 'N/A'}</td>
+                </tr>
+            `;
+        }
+    } catch (error) {
+        console.error("FIREBASE READ ERROR: Failed to load Student Information Summary.", error);
+        document.getElementById('studentSummaryRow').innerHTML = '<tr><td colspan="7">Failed to load data. Firebase permissions denied.</td></tr>';
+    }
+}
+
+
+async function displayGrades() {
+    const sy = document.getElementById('schoolYearFilter').value;
+    const sem = document.getElementById('semesterFilter').value;
+
+
+    if (!sy || !sem) {
+        alert("Please select both School Year and Semester.");
+        return;
+    }
+
+
+    const gradesTableContainer = document.getElementById('gradesTableContainer');
+    const gradesBody = document.getElementById('gradesTableBody');
+
+
+    gradesTableContainer.style.display = 'block';
+    document.querySelector('.grades-checklist-card h4').textContent = `GRADES FOR ${sy} - ${sem}`;
+
+
+    const studnumber = JSON.parse(localStorage.getItem('currentUser'))?.studentNumber;
+    if (!studnumber || typeof dbRef === 'undefined') return;
+
+
+    gradesBody.innerHTML = '<tr><td colspan="10">Loading grades...</td></tr>';
+
+
+    try {
+        const gradesSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studnumber).collection('grades')
+                                         .where('schoolYear', '==', sy)
+                                         .where('semester', '==', sem)
+                                         .get();
+
+
+        gradesBody.innerHTML = '';
+
+
+        if (gradesSnapshot.empty) {
+            gradesBody.innerHTML = '<tr><td colspan="10">No grades found for the selected period.</td></tr>';
+            return;
+        }
+
+
+        gradesSnapshot.forEach(doc => {
+            const grade = doc.data();
+            const row = gradesBody.insertRow();
+            row.innerHTML = `
+                <td>${grade.courseCode || 'N/A'}</td>
+                <td>${grade.courseDescription || 'N/A'}</td>
+                <td>${grade.lecUnits || 'N/A'}</td>
+                <td>${grade.labUnits || 'N/A'}</td>
+                <td>${grade.preRequisites || 'N/A'}</td>
+                <td>${grade.schoolYear} / ${grade.semester}</td>
+                <td>${grade.instructor || ''}</td>
+                <td>${grade.creditUnits || 'N/A'}</td>
+                <td class="${grade.finalGrade && (parseFloat(grade.finalGrade) > 3.0) ? 'failed' : ''}">${grade.finalGrade || ''}</td>
+                <td>${grade.makeupGrade || ''}</td>
+            `;
+        });
+    } catch (error) {
+        console.error("Error displaying grades:", error);
+        gradesBody.innerHTML = '<tr><td colspan="10">Failed to load grades.</td></tr>';
+    }
+}
+
+
+async function viewStudentChecklist() {
+    const gradesTableContainer = document.getElementById('gradesTableContainer');
+    const gradesBody = document.getElementById('gradesTableBody');
+
+
+    gradesTableContainer.style.display = 'block';
+    document.querySelector('.grades-checklist-card h4').textContent = 'STUDENT CHECKLIST';
+
+
+    const studnumber = JSON.parse(localStorage.getItem('currentUser'))?.studentNumber;
+    if (!studnumber || typeof dbRef === 'undefined') return;
+
+
+    gradesBody.innerHTML = '<tr><td colspan="10">Loading checklist...</td></tr>';
+
+
+    try {
+        const docSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studnumber).get();
+        const courseId = docSnapshot.data()?.course || 'BSCS';
+
+
+        const curriculumSnapshot = await dbRef.collection('curriculum').doc(courseId).collection('subjects').get();
+
+
+        const studentGradesSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studnumber).collection('grades').get();
+        const studentGradesMap = {};
+        studentGradesSnapshot.forEach(doc => {
+            studentGradesMap[doc.data().courseCode] = doc.data();
+        });
+
+
+        gradesBody.innerHTML = '';
+
+
+        curriculumSnapshot.forEach(doc => {
+            const subject = doc.data();
+            const gradeInfo = studentGradesMap[subject.courseCode] || {};
+
+
+            const row = gradesBody.insertRow();
+            row.innerHTML = `
+                <td>${subject.courseCode || 'N/A'}</td>
+                <td>${subject.courseDescription || 'N/A'}</td>
+                <td>${subject.lecUnits || 'N/A'}</td>
+                <td>${subject.labUnits || 'N/A'}</td>
+                <td>${subject.preRequisites || 'N/A'}</td>
+                <td>${gradeInfo.schoolYear ? `${gradeInfo.schoolYear} / ${gradeInfo.semester}` : ''}</td>
+                <td>${gradeInfo.instructor || ''}</td>
+                <td>${subject.creditUnits || 'N/A'}</td>
+                <td class="${gradeInfo.finalGrade && (parseFloat(gradeInfo.finalGrade) > 3.0) ? 'failed' : ''}">${gradeInfo.finalGrade || ''}</td>
+                <td>${gradeInfo.makeupGrade || ''}</td>
+            `;
+        });
+    } catch (error) {
+        console.error("Error loading student checklist:", error);
+        gradesBody.innerHTML = '<tr><td colspan="10">Failed to load curriculum data.</td></tr>';
+    }
+}
+
+
+
+
+// --- NEW CODE: API INTEGRATION FOR ADDRESS DROPDOWNS ---
+// Add this new constant near the top of your script.js (e.g., near other global variables)
+const API_BASE_URL = 'https://psgc.cloud/api';
+const NCR_REGION_CODE = '130000000'; // PSGC Code for National Capital Region (NCR)
+
+
+// Element variables aligned with HTML IDs:
+const provinceSelect = document.getElementById('inputProvince');
+const municipalitySelect = document.getElementById('inputMunicipality');
+const barangaySelect = document.getElementById('inputBarangay');
+// NOTE: Civil Status element ID is inputCVStatus in the form HTML, but the field name is cvstatus (Firestore).
+const cvstatusSelect = document.getElementById('inputCVStatus');
+
+
+/**
+ * Fetches data from a specific API endpoint (path), processes it (sorting, special cases),
+ * and populates a select element.
+ * @param {HTMLSelectElement} selectElement - The target <select> element.
+ * @param {string} path - The full API path (e.g., 'regions', 'regions/130000000/cities-municipalities', or 'cities-municipalities/133900000/barangays').
+ * @param {string} defaultText - The initial message (e.g., 'Select Region').
+ * @param {string} psgcCode - The PSGC code of the parent (only needed for Manila injection check).
+ */
+async function populateDropdown(selectElement, path, defaultText, psgcCode = null) {
+    if (!selectElement) return;
+
+
+    selectElement.innerHTML = `<option value="">${defaultText}</option>`;
+    selectElement.disabled = true;
+   
+    try {
+        const url = `${API_BASE_URL}/${path}`;
+        let data = [];
+       
+        // --- 1. FETCH DATA ---
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch data from ${url}. Status: ${response.status}`);
+        }
+        data = await response.json();
+
+
+        // --- 2. SPECIAL DATA INJECTION ---
+       
+        // Inject 'City of Manila' if we are loading cities/municipalities for NCR
+        if (psgcCode === NCR_REGION_CODE && path.includes('cities-municipalities')) {
+            const hasManila = data.some(item => String(item.name).toUpperCase().includes('MANILA'));
+           
+            if (!hasManila) {
+                 // '133900000' is the PSGC for the City of Manila
+                 data.push({ name: 'City of Manila', code: '133900000' });
+            }
+        }
+       
+        // --- 3. ALPHABETICAL SORTING (Universal) ---
+        data.sort((a, b) => {
+            const nameA = String(a.name).toUpperCase();
+            const nameB = String(b.name).toUpperCase();
+           
+            if (nameA < nameB) return -1;
+            if (nameA > nameB) return 1;
+            return 0;
+        });
+
+
+        // --- 4. POPULATE DROPDOWN ---
+        data.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.name.toUpperCase();
+            option.textContent = item.name;
+            option.setAttribute('data-psgc-code', item.code);
+            selectElement.appendChild(option);
+        });
+
+
+        selectElement.disabled = false;
+
+
+    } catch (error) {
+        console.error(`Error populating dropdown for ${selectElement.id}:`, error);
+        selectElement.innerHTML = `<option value="">Failed to load ${defaultText.toLowerCase()}.</option>`;
+        selectElement.disabled = true;
+    }
+}
+
+
+// 1. Initial Load: Populate Regions (using the provinceSelect element)
+function loadRegions() {
+    // Only load if the province dropdown element exists
+    if (provinceSelect) {
+        populateDropdown(provinceSelect, 'regions', 'Select Region');
+    }
+}
+
+
+// --- INITIAL EXECUTION ---
+document.addEventListener('DOMContentLoaded', loadRegions);
+
+
+// 2. Set up event listeners for the cascading effect
+if (provinceSelect && municipalitySelect && barangaySelect) {
+   
+    // 1. REGION (inputProvince) Select Listener
+    provinceSelect.addEventListener('change', () => {
+        const selectedOption = provinceSelect.options[provinceSelect.selectedIndex];
+        const regionCode = selectedOption.getAttribute('data-psgc-code'); // Now regionCode
+       
+        // Reset lower levels
+        municipalitySelect.innerHTML = '<option value="">Select Region first</option>';
+        barangaySelect.innerHTML = '<option value="">Select Province/City first</option>';
+        municipalitySelect.disabled = true;
+        barangaySelect.disabled = true;
+
+
+        if (regionCode) {
+            let nextPath;
+            let nextDefaultText;
+
+
+            if (regionCode === NCR_REGION_CODE) {
+                // SPECIAL NCR CASE: Load cities/municipalities directly under the region code
+                nextPath = `regions/${regionCode}/cities-municipalities`;
+                nextDefaultText = 'Select City/Municipality';
+            } else {
+                // STANDARD REGION CASE: Load provinces under the region code
+                nextPath = `regions/${regionCode}/provinces`;
+                nextDefaultText = 'Select Province';
+            }
+           
+            // Pass the region code for the Manila injection check
+            populateDropdown(municipalitySelect, nextPath, nextDefaultText, regionCode);
+        }
+    });
+
+
+    // 2. PROVINCE/CITY/MUNICIPALITY (inputMunicipality) Select Listener
+    municipalitySelect.addEventListener('change', () => {
+        const selectedOption = municipalitySelect.options[municipalitySelect.selectedIndex];
+        const nextLevelCode = selectedOption.getAttribute('data-psgc-code'); // This can be a Province Code or a City/Municipality Code
+
+
+        // Reset lower level
+        barangaySelect.innerHTML = '<option value="">Select Province/City first</option>';
+        barangaySelect.disabled = true;
+
+
+        if (nextLevelCode) {
+            let nextPath;
+            let nextDefaultText;
+
+
+            // Check if the selected item is a 5-digit Province Code (like 042100000)
+            if (String(nextLevelCode).endsWith('00000') && String(nextLevelCode).length === 9) {
+                // This is a Province. Next level is Cities/Municipalities under this Province.
+                nextPath = `provinces/${nextLevelCode}/cities-municipalities`;
+                nextDefaultText = 'Select City/Municipality';
+            } else {
+                // This is a City/Municipality Code. Next level is Barangays under this City/Municipality.
+                nextPath = `cities-municipalities/${nextLevelCode}/barangays`;
+                nextDefaultText = 'Select Barangay';
+            }
+
+
+            // Note: psgcCode is null as no further injection check is needed.
+            populateDropdown(barangaySelect, nextPath, nextDefaultText, null);
+        }
+    });
+}
+
+
+// Function to handle the initial click on the "Update Profile" button
+// --- 1. OPEN MODAL & LOAD DATA ---
+async function handleUpdateProfileClick() {
+    const userProfileData = localStorage.getItem('currentUser');
+    if (!userProfileData) {
+        alert("Error: User session not found.");
+        return;
+    }
+    const user = JSON.parse(userProfileData);
+    document.getElementById('updateModal').style.display = 'flex';
+   
+    // Load existing Firebase data into the form
+    await loadProfileDataForForm(user.studentNumber);
+}
+
+
+async function loadProfileDataForForm(studentId) {
+    try {
+        const docSnapshot = await dbRef.collection(USERS_COLLECTION).doc(studentId).get();
+        if (docSnapshot.exists) {
+            const data = docSnapshot.data();
+
+
+            // Populate Text inputs
+            document.getElementById('inputStreet').value = data.street || '';
+            document.getElementById('inputProvince').value = data.province || '';
+            document.getElementById('inputMunicipality').value = data.municipality || '';
+            document.getElementById('inputBarangay').value = data.barangay || '';
+           
+            document.getElementById('inputCVStatus').value = data.cvstatus || '';
+            document.getElementById('inputContactNumber').value = data.studentContact || '';
+            document.getElementById('inputGuardianName').value = data.guardianName || '';
+            document.getElementById('inputGuardianContact').value = data.guardianContact || '';
+        }
+    } catch (error) {
+        console.error("Error loading profile data:", error);
+    }
+}
+
+
+// Simplified Save Function
+async function handleUpdateProfileSubmit(event) {
+    event.preventDefault();
+   
+    const updatedData = {
+        street: document.getElementById('inputStreet').value.trim(),
+        province: document.getElementById('inputProvince').value.trim(),
+        municipality: document.getElementById('inputMunicipality').value.trim(),
+        barangay: document.getElementById('inputBarangay').value.trim(),
+        cvstatus: document.getElementById('inputCVStatus').value.trim(),
+        studentContact: document.getElementById('inputContactNumber').value.trim(),
+        guardianName: document.getElementById('inputGuardianName').value.trim(),
+        guardianContact: document.getElementById('inputGuardianContact').value.trim(),
+    };
+   
+    try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        await dbRef.collection(USERS_COLLECTION).doc(user.studentNumber).update(updatedData);
+        alert("Profile Updated!");
+        document.getElementById('updateModal').style.display = 'none';
+    } catch (error) {
+        console.error("Update Error:", error);
+        alert("Failed to update profile.");
+    }
+}
+
+
+// Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const updateForm = document.getElementById('updateProfileForm');
+    if (updateForm) {
+        updateForm.addEventListener('submit', handleUpdateProfileSubmit);
+    }
+});
+// --- NEW PROFILE UPDATE FUNCTIONS END ---
+
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadUserProfile();
+    setActiveLink();
+    updateEnrollmentLink();
+
+
+    if (document.getElementById('supportForm')) {
+        loadStudentProfile();
+    }
+
+
+
+
+    if (window.location.pathname.includes('student_profile.html')) {
+        loadStudentProfileDetails();
+       
+        // --- NEW: INITIALIZE PROVINCE DROPDOWN ON PAGE LOAD ---
+        // This makes the provinces available before the user clicks 'Update Profile'
+        loadProvinces();
+        // -----------------------------------------------------
+
+
+        // --- ATTACH NEW EVENT LISTENERS FOR PROFILE UPDATE ---
+        const updateProfileBtn = document.getElementById('updateProfileBtn');
+        const updateProfileForm = document.getElementById('updateProfileForm');
+        const cancelUpdateBtn = document.getElementById('cancelUpdateBtn');
+       
+        // Added console log for debugging client side
+        if (updateProfileBtn) {
+            console.log("UpdateProfileBtn found. Attaching listener.");
+            updateProfileBtn.addEventListener('click', handleUpdateProfileClick);
+        } else {
+             console.error("UpdateProfileBtn not found on DOMContentLoaded.");
+        }
+       
+        if (updateProfileForm) {
+            updateProfileForm.addEventListener('submit', handleUpdateProfileSubmit);
+        }
+        if (cancelUpdateBtn) {
+            cancelUpdateBtn.addEventListener('click', handleCancelUpdateClick);
+        }
+        // -----------------------------------------------------
+
+
+    }
+    if (window.location.pathname.includes('sgrades.html')) {
+        loadGradePageDefaults();
+    }
+    if (window.location.pathname.includes('schedule.html')) {
+        const userProfileData = localStorage.getItem('currentUser');
+        if (userProfileData) {
+            const user = JSON.parse(userProfileData);
+            loadSchedulePageDefaults(user.studentNumber);
+            loadStudentSchedule(user.studentNumber);
+        }
+        document.getElementById('uploadScheduleButton')?.addEventListener('click', scrapeAndUploadSchedule);
+    }
+    if (window.location.pathname.includes('index.html') || window.location.pathname === '/' || window.location.pathname.includes('dashboard.html')) {
+        fetchAndRenderEvents();
+ 
+        const prevMonthBtnId = document.getElementById('prevMonth');
+        const nextMonthBtnId = document.getElementById('nextMonth');
+        const todayBtn = document.getElementById('todayButton');
+        const prevMonthBtnClass = document.querySelector('.fa-chevron-left');
+        const nextMonthBtnClass = document.querySelector('.fa-chevron-right');
+
+
+        const finalPrevBtn = prevMonthBtnId || prevMonthBtnClass;
+        const finalNextBtn = nextMonthBtnId || nextMonthBtnClass;
+
+
+        renderCalendar(currentDate);
+
+
+        if (finalPrevBtn) finalPrevBtn.addEventListener('click', () => changeMonth(-1));
+        if (finalNextBtn) finalNextBtn.addEventListener('click', () => changeMonth(1));
+        if (todayBtn) {
+            todayBtn.addEventListener('click', () => {
+                currentDate = new Date();
+                renderCalendar(currentDate);
+            });
+        }
+        initializeCalendarAndHighlight();
+    }
+
+
+    document.getElementById('displayGradesButton')?.addEventListener('click', displayGrades);
+    document.getElementById('viewChecklistButton')?.addEventListener('click', viewStudentChecklist);
+
+
+
+
+    document.getElementById('changePasswordForm')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const currentPass = document.getElementById('currentPassword').value.trim();
+        const newPass = document.getElementById('newPassword').value.trim();
+        const confirmPass = document.getElementById('confirmPassword').value.trim();
+        changePassword(currentPass, newPass, confirmPass);
+    });
+
+
+
+
+    const supportForm = document.getElementById('supportForm');
+   
+    // Check if dbRef and SUPPORT_COLLECTION are globally available
+    if (supportForm && typeof dbRef !== 'undefined' && typeof SUPPORT_COLLECTION !== 'undefined') {
+        supportForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+           
+       
+            const studentNumber = document.getElementById('studentNumber').value.trim();
+            const fullName = document.getElementById('fullName').value.trim();
+            const courseProgram = document.getElementById('courseProgram').value.trim();
+
+
+            const issueType = document.getElementById('issueType').value;
+            const description = document.getElementById('description').value.trim();
+            const submitTicketBtn = document.getElementById('submitTicketBtn');
+
+
+
+
+            console.log('DEBUG: Form Data Check:', { studentNumber, fullName, courseProgram, issueType, description });
+
+
+       
+            if (!studentNumber || !fullName || !courseProgram || !issueType || !description) {
+                displayMessage('error', '❌ All fields must be filled.');
+         
+                return;
+            }
+           
+            const ticketData = {
+                studentNumber: studentNumber,
+                fullName: fullName,
+                courseProgram: courseProgram,
+                issueType: issueType,
+                description: description,
+                status: 'Open',
+                submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+
+
+
+            try {
+                // Using global SUPPORT_COLLECTION
+                await dbRef.collection(SUPPORT_COLLECTION).add(ticketData);
+                displayMessage('success', '✅ Support ticket submitted successfully! We will contact you soon.');
+                supportForm.reset();
+            } catch (error) {
+                displayMessage('error', '❌ Failed to submit ticket. Please try again or use the quick contacts.');
+                console.error("Error submitting support ticket:", error);
+            } finally {
+                if (submitTicketBtn) {
+                    submitTicketBtn.disabled = false;
+                    submitTicketBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Ticket';
+                }
+            }
+        });
+    }
+});
